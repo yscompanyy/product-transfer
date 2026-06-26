@@ -70,10 +70,28 @@ module.exports = async (req, res) => {
   try {
     const token = generateToken(clientId, clientSecret);
 
-    // 상품 목록 조회
-    const listData = await naverPost('/external/v1/products/search', token, { page, size, orderType: 'NO' });
+    // 판매중, 품절, 판매중지 상태 + 기간 전체
+    const searchBody = {
+      page,
+      size,
+      orderType: 'NO',
+      productStatusTypes: ['SALE', 'OUTOFSTOCK', 'SUSPENSION']
+    };
 
-    if (!listData.contents || listData.contents.length === 0) {
+    const listData = await naverPost('/external/v1/products/search', token, searchBody);
+
+    // 디버그용 응답 로그
+    if (!listData.contents) {
+      return res.status(200).json({
+        products: [],
+        total: 0,
+        page,
+        hasMore: false,
+        debug: listData
+      });
+    }
+
+    if (listData.contents.length === 0) {
       return res.status(200).json({ products: [], total: listData.totalElements || 0, page, hasMore: false });
     }
 
@@ -83,7 +101,7 @@ module.exports = async (req, res) => {
         try {
           return await naverGet(`/external/v1/products/origin-products/${p.originProductNo}`, token);
         } catch (e) {
-          return p;
+          return { ...p, detailError: e.message };
         }
       })
     );
@@ -94,6 +112,6 @@ module.exports = async (req, res) => {
     return res.status(200).json({ products: details, total, page, hasMore });
 
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message, stack: e.stack });
   }
 };
